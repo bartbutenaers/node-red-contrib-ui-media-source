@@ -1,0 +1,26 @@
+{
+    "name": "node-red-contrib-media-source",
+    "version": "1.0.0-beta.1",
+    "description": "A Node-RED widget node for recording the microphone in a dashboard",
+    "dependencies": {
+    },
+    "author": {
+        "name": "Bart Butenaers"
+    },
+    "license": "Apache-2.0",
+    "keywords": ["sse", "server", "client", "event", "stream"
+    ],
+    "bugs": {
+        "url": "https://github.com/bartbutenaers/node-red-contrib-media-source/issues"
+    },
+    "homepage": "https://github.com/bartbutenaers/node-red-contrib-media-source",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/bartbutenaers/node-red-contrib-media-source.git"
+    },
+    "node-red": {
+        "nodes": {
+            "media-source-recorder": "media_source_recorder.js"
+        }
+    }
+}
