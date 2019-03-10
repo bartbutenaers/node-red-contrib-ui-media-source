@@ -23,6 +23,34 @@
     </div>
     </br>
     <div class="form-row">
+        <label for="node-input-bufferLength"><i class="fa fa-envelope"></i> Buffer length</label>
+        <select id="node-input-bufferLength">
+            <option value="1024">1024</option>
+            <option value="2048">2048</option>
+            <option value="4096">4096</option>
+        </select>
+    </div>
+    <div class="form-row">
+        <label for="node-input-encoding"><i class="fa fa-wrench"></i> Encoding</label>
+        <select id="node-input-encoding">
+            <option value="raw">Raw audio (PCM)</option>
+            <option value="mp3">MP3</option>
+        </select>
+    </div>
+    <div class="form-row">    
+        <input type="checkbox" id="node-input-echoCancellation" style="display: inline-block; width: auto; vertical-align: top;">
+        <label for="node-input-echoCancellation" style="width:70%;"> Automatic echo cancellation</label> 
+    </div>
+    <div class="form-row">    
+        <input type="checkbox" id="node-input-noiseSuppression" style="display: inline-block; width: auto; vertical-align: top;">
+        <label for="node-input-noiseSuppression" style="width:70%;"> Automatic noise suppression</label> 
+    </div>
+    <div class="form-row">    
+        <input type="checkbox" id="node-input-gainControl" style="display: inline-block; width: auto; vertical-align: top;">
+        <label for="node-input-gainControl" style="width:70%;"> Automatic gain control</label> 
+    </div>
+    </br>
+    <div class="form-row">
         <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
         <input type="text" id="node-input-name">
     </div>
@@ -47,7 +75,12 @@
                     $("#node-input-size").toggleClass("input-error",!valid);
                     return valid;
                 }},
-            height: {value: 0}
+            height: {value: 0},
+            encoding: {value: "raw"},
+            echoCancellation: {value: true},
+            noiseSuppression: {value: true},
+            gainControl: {value: true},
+            bufferLength: {value: 4096}
         },
         inputs:1,
         outputs:1,
