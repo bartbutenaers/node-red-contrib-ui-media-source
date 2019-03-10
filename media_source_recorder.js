@@ -26,9 +26,12 @@ module.exports = function(RED) {
     // Client side (Dashboard)
     // ***********************************************************************************************
     function HTML(config) {
-        // No html content, to allow the user to use other widgets to enable/disable the audio capture
-        var mimeType = config.mimeType;
-        return "";
+        // The configuration is a Javascript object, which needs to be converted to a JSON string
+        var configAsJson = JSON.stringify(config);
+        
+        // Load the MP3 encoder library.
+        return String.raw`
+        <script src="media_source/js/lame.min.js" ng-init='init(` + configAsJson + `)'></script>`;
     };
 
     // ***********************************************************************************************
@@ -70,14 +73,16 @@ module.exports = function(RED) {
                         }
                     },
                     initController: function($scope, events) {
-                        debugger;
+                        $scope.init = function (config) {
+                            $scope.config = config;
+                        }
                         
                         if (!window.MediaSource && !window.WebKitMediaSource) {
                             // TODO show this error in the node status (flow editor)
                             console.log("Your browser doesn't support the MediaSource API!");
                             return;
                         }
-                        
+                                                
                         // Watch input messages arriving from the Node-RED flow
                         $scope.$watch('msg', function(newVal, oldVal) {
                             if (!newVal) {
@@ -105,21 +110,56 @@ module.exports = function(RED) {
                                     navigator.getUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.mediaDevices.getUserMedia;
                                 }
                                 
+                                // Configure the user media based on the settings on the config screen
+                                var userMediaConfig = {
+                                    audio: {
+                                        echoCancellation: $scope.config.echoCancellation,
+                                        noiseSuppression: $scope.config.noiseSuppression,
+                                        autoGainControl: $scope.config.gainControl
+                                    }
+                                };
+                                
                                 // Start capturing by getting access to the microphone (e.g. Chrome will display a popup here ...)
-                                navigator.getUserMedia({ audio: true, video: false }, function(stream) {
+                                navigator.getUserMedia(userMediaConfig, function(stream) {
+                                    const numChannels = 1; // TODO can this be determined automatically ???   -->  1 for mono or 2 for stereo
+                                    const bitRate = 128; // kbps TODO adjustable ???
+                                    const sampleRate = 44100; // 44.1khz (this is a normal mp3 samplerate)
+                                    const sampleBlockSize = 1152; //can be anything but make it a multiple of 576 to make encoders life easier
+                    
                                     $scope.mediaStream = stream;
                                     
                                     // Start a WEB AUDIO process chain
                                     $scope.context = new AudioContext();
                                     $scope.mediaSource = $scope.context.createMediaStreamSource($scope.mediaStream);
-                                    $scope.recorderProcessor = $scope.context.createScriptProcessor(1024, 1, 1);
+                                    $scope.recorderProcessor = $scope.context.createScriptProcessor(parseInt($scope.config.bufferLength), numChannels, numChannels);
 
                                     $scope.mediaSource.connect($scope.recorderProcessor);
                                     $scope.recorderProcessor.connect($scope.context.destination);
 
-                                    $scope.recorderProcessor.onaudioprocess = function(e) {
+                                    if (!$scope.mp3encoder) {
+                                        // TODO perhaps do the encoding in a separate worker process (https://github.com/jsalsman/speakclearly/blob/master/index.html)
+                                        $scope.mp3encoder = new lamejs.Mp3Encoder(numChannels, sampleRate, bitRate);
+                                    }
+                                    
+                                    $scope.recorderProcessor.onaudioprocess = function(event) {
+                                         // The inputBuffer is a raw audio buffer (PCM)
+                                         // Caution: above the number of channels has been hardcoded to 1, so let's take that channel.
+                                        var payload = event.inputBuffer.getChannelData(0);
+                                        
+                                        if ($scope.config.encoding === "mp3") {                
+                                            // See https://github.com/zhuker/lamejs/issues/10#issuecomment-150711192
+                                            var lo = payload; //the decoded data range: -1 +1
+                                            var l = new Float32Array(lo.length); 
+                                            for(var i = 0; i < lo.length; i++) {
+                                                l[i] = lo[i] * 32767.5; // TODO is this required ???
+                                            }
+                                            
+                                            // Convert the raw audio to mp3
+                                            payload = $scope.mp3encoder.encodeBuffer(l);
+                                        }
+
                                         // Send the audio chunk to the output of the node (in the Node-RED flow)
-                                        $scope.send({payload: e.inputBuffer});
+                                        $scope.send({payload: payload});
                                     };
                                     
                                     // When the buffer source stops playing, disconnect everything
@@ -181,4 +221,15 @@ module.exports = function(RED) {
         });
     }
     RED.nodes.registerType('media-source-recorder', MediaSourceRecorderNode);
+	
+    // Make all the static resources from this node public available (i.e. Mp3LameEncoder.min.js file).
+    RED.httpNode.get('/ui/media_source/js/*', function(req, res){
+        var options = {
+            root: __dirname + '/lib/',
+            dotfiles: 'deny'
+        };
+       
+        // Send the requested file to the client (in this case it will be Mp3LameEncoder.min.js)
+        res.sendFile(req.params[0], options)
+    });
 };
