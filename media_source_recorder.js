@@ -27,7 +27,6 @@ module.exports = function(RED) {
     // ***********************************************************************************************
     function HTML(config) {
         // No html content, to allow the user to use other widgets to enable/disable the audio capture
-        var mimeType = config.mimeType;
         return "";
     };
 
@@ -70,8 +69,6 @@ module.exports = function(RED) {
                         }
                     },
                     initController: function($scope, events) {
-                        debugger;
-                        
                         if (!window.MediaSource && !window.WebKitMediaSource) {
                             // TODO show this error in the node status (flow editor)
                             console.log("Your browser doesn't support the MediaSource API!");
