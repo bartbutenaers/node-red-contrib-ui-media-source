@@ -20,7 +20,8 @@
     },
     "node-red": {
         "nodes": {
-            "media-source-recorder": "media_source_recorder.js"
+            "media-source-recorder": "media_source_recorder.js",
+            "media-source-player": "media_source_player.js"
         }
     }
 }
