@@ -69,6 +69,9 @@ module.exports = function(RED) {
                     },
                     beforeSend: function (msg, orig) {
                         if (orig) {
+                            // The buffer contains an ArrayBuffer, so let's convert it to a NodeJs Buffer
+                            // See https://github.com/feross/typedarray-to-buffer/blob/master/index.js
+                            //orig.msg.payload = Buffer.from(orig.msg.payload);
                             return orig.msg;
                         }
                     },
@@ -141,25 +144,35 @@ module.exports = function(RED) {
                                         $scope.mp3encoder = new lamejs.Mp3Encoder(numChannels, sampleRate, bitRate);
                                     }
                                     
+                                    debugger;
+                                    
                                     $scope.recorderProcessor.onaudioprocess = function(event) {
-                                         // The inputBuffer is a raw audio buffer (PCM)
-                                         // Caution: above the number of channels has been hardcoded to 1, so let's take that channel.
-                                        var payload = event.inputBuffer.getChannelData(0);
+                                        // The inputBuffer is a raw audio buffer (PCM)
+                                        // Caution: above the number of channels has been hardcoded to 1, so let's take that channel.
+                                        var typedBuffer = event.inputBuffer.getChannelData(0);
                                         
                                         if ($scope.config.encoding === "mp3") {                
                                             // See https://github.com/zhuker/lamejs/issues/10#issuecomment-150711192
-                                            var lo = payload; //the decoded data range: -1 +1
+                                            var lo = typedBuffer; //the decoded data range: -1 +1
                                             var l = new Float32Array(lo.length); 
                                             for(var i = 0; i < lo.length; i++) {
                                                 l[i] = lo[i] * 32767.5; // TODO is this required ???
                                             }
                                             
                                             // Convert the raw audio to mp3
-                                            payload = $scope.mp3encoder.encodeBuffer(l);
+                                            typedBuffer = $scope.mp3encoder.encodeBuffer(l);
                                         }
+                                        
+                                        // The typedBuffer will now contain a Float32Array, since the MediaSource API uses typed arrays.
+                                        // A typed array is normal ArrayBuffer with a typed view wrapping it.
+                                        // Don't pass the typed array to Node-RED because it would be converted to an object:
+                                        // {0: <value0>, 1: <value1>, 2: <value2>, ...{
+                                        // Instead we will return the underlying ArrayBuffer, so no copy of the data is required.
+                                        // See https://github.com/feross/typedarray-to-buffer/blob/master/index.js
+                                        var arrayBuffer = typedBuffer.buffer;
 
                                         // Send the audio chunk to the output of the node (in the Node-RED flow)
-                                        $scope.send({payload: payload});
+                                        $scope.send({payload: arrayBuffer});
                                     };
                                     
                                     // When the buffer source stops playing, disconnect everything
