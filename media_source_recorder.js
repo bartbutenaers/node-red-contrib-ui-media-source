@@ -31,7 +31,8 @@ module.exports = function(RED) {
         
         // Load the MP3 encoder library.
         return String.raw`
-        <script src="media_source/js/lame.min.js" ng-init='init(` + configAsJson + `)'></script>`;
+        <script src="media_source/js/lame.min.js" ng-init='init(` + configAsJson + `)'></script>
+        <canvas id="mediaSourceRecorderCanvas_` + config.id + `" style="width:100%; height:120px;" height="120px"></canvas>`;
     };
 
     // ***********************************************************************************************
@@ -78,6 +79,15 @@ module.exports = function(RED) {
                     initController: function($scope, events) {
                         $scope.init = function (config) {
                             $scope.config = config;
+                            
+                            debugger;
+                            // Initialize canvas
+                            $scope.canvas = document.getElementById('mediaSourceRecorderCanvas_' + $scope.config.id);
+                            $scope.canvasCtx = $scope.canvas.getContext('2d');
+                            $scope.canvasCtx.fillStyle = 'rgb(255, 255, 255)';
+                            $scope.canvasCtx.fillRect(0, 0, $scope.canvas.width, $scope.canvas.height);
+                            $scope.canvasCtx.lineWidth = 2;
+                            $scope.canvasCtx.strokeStyle = 'steelblue';
                         }
                         
                         if (!window.MediaSource && !window.WebKitMediaSource) {
@@ -146,6 +156,7 @@ module.exports = function(RED) {
                                     
                                     debugger;
                                     
+                                    // Handle audio chunks from the microphone
                                     $scope.recorderProcessor.onaudioprocess = function(event) {
                                         // The inputBuffer is a raw audio buffer (PCM)
                                         // Caution: above the number of channels has been hardcoded to 1, so let's take that channel.
@@ -173,6 +184,30 @@ module.exports = function(RED) {
 
                                         // Send the audio chunk to the output of the node (in the Node-RED flow)
                                         $scope.send({payload: arrayBuffer});
+                                        
+                                        // https://medium.com/@duraraxbaccano/computer-art-visualize-your-music-in-javascript-with-your-browser-part-2-fa1a3b73fdc6
+                                        var bufferLength = $scope.analyser.frequencyBinCount;
+                                        var dataArray = new Uint8Array(bufferLength);
+                                        $scope.analyser.getByteTimeDomainData(dataArray);
+                                        
+                                        // clear the previous shape
+                                        $scope.canvasCtx.fillRect(0, 0, $scope.canvas.width, $scope.canvas.height);
+                                        $scope.canvasCtx.beginPath();
+                                        var sliceWidth = $scope.canvas.width * 1.0 / bufferLength;
+                                        var x = 0;
+                                        for(var i = 0; i < bufferLength; i++) {
+                                            var v = dataArray[i] / 128.0;
+                                            var y = v * $scope.canvas.height / 2;
+                                            if(i === 0) {
+                                                $scope.canvasCtx.moveTo(x, y);
+                                            }
+                                            else {
+                                                $scope.canvasCtx.lineTo(x, y);
+                                            }
+                                            x += sliceWidth;
+                                        }
+                                        $scope.canvasCtx.lineTo($scope.canvas.width, $scope.canvas.height / 2);
+                                        $scope.canvasCtx.stroke();
                                     };
                                     
                                     // When the buffer source stops playing, disconnect everything
@@ -184,6 +219,15 @@ module.exports = function(RED) {
                                     $scope.mediaSource.onended = function() {
                                         // TODO update the node status in the flow editor
                                     }
+                                    
+                                    // create audio analyser
+                                    $scope.analyser = $scope.context.createAnalyser();     
+                                    $scope.analyser.fftSize = 2048;
+                                    var bufferLength = $scope.analyser.frequencyBinCount;
+                                    var dataArray = new Uint8Array(bufferLength);
+                                    
+                                    // Bind our analyser to the media element source.
+                                    $scope.mediaSource.connect($scope.analyser);   
                                 },
                                 function(err) {
                                     // TODO update the node status in the flow editor
