@@ -32,9 +32,10 @@ module.exports = function(RED) {
         var configAsJson = JSON.stringify(config);
         
         var html = String.raw`
-        <audio width="400" controls id="mediaSourcePlayer_` + config.id`" ng-init='init(` + configAsJson + `)>
+        <audio width="400" controls id="mediaSourcePlayer_` + config.id + `" ng-init='init(` + configAsJson + `)' hidden>
             <p>This browser does not support the audio element.</p>
-        </video>;`
+        </audio>;
+        <canvas id="mediaSourcePlayerCanvas_` + config.id + `" style="width:100%; height:120px;" height="120px"></canvas>`
         return html;
     };
 
@@ -77,10 +78,17 @@ module.exports = function(RED) {
                         }
                     },
                     initController: function($scope, events) {
-                        debugger;
-                        
                         $scope.init = function (config) {
                             $scope.config = config;
+                            /*
+                            // Initialize canvas
+                            $scope.canvas = document.getElementById('mediaSourcePlayerCanvas_' + $scope.config.id);
+                            $scope.canvasCtx = $scope.canvas.getContext('2d');
+                            $scope.canvasCtx.fillStyle = 'rgb(255, 255, 255)';
+                            $scope.canvasCtx.fillRect(0, 0, $scope.canvas.width, $scope.canvas.height);
+                            $scope.canvasCtx.lineWidth = 2;
+                            $scope.canvasCtx.strokeStyle = 'steelblue';
+                            */
                         }
                         
                         if (!window.MediaSource && !window.WebKitMediaSource) {
@@ -91,9 +99,11 @@ module.exports = function(RED) {
                         
                         // Watch input messages arriving from the Node-RED flow
                         $scope.$watch('msg', function(newVal, oldVal) {
-                            if (!newVal) {
+                            if (!newVal || !newVal.payload) {
                                 return;
                             }
+                            
+                            debugger;
                             
                             /*if (typeof newVal.payload !== "buffer") {
                                 console.log("The msg.payload should contain an audio buffer!");
@@ -101,11 +111,13 @@ module.exports = function(RED) {
                             }*/
                             
                             if (newVal.payload == true) {
+                                // TODO aan server side tonen
                                 if ($scope.mediaSource || $scope.mediaQueue || $scope.mediaBuffer) {
                                     console.log("The audio player is already started!");
                                     return;
                                 }
                                 
+                                // TODO teruggeven naar server side ????????  Wat indien meerdere browsers ???????????
                                 if (!window.MediaSource && !window.WebKitMediaSource) {
                                     console.log("Your browser doesn't support the MediaSource API!");
                                     return;
@@ -116,7 +128,7 @@ module.exports = function(RED) {
                                     navigator.getUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.mediaDevices.getUserMedia;
                                 }*/
                                 
-                                var audioElement = document.getElementById("mediaSourcePlayer_" + config.id);
+                                var audioElement = document.getElementById("mediaSourcePlayer_" + $scope.config.id);
                                 $scope.mediaSource = new MediaSource();
                                 audioElement.src = window.URL.createObjectURL($scope.mediaSource);
                                 $scope.mediaQueue = [];
@@ -128,9 +140,10 @@ module.exports = function(RED) {
                                 }
 
                                 $scope.mediaSource.addEventListener('sourceopen', function(){
-                                    // TODO mime type uit $scope.init halen
+                                    // TODO checken aan server side of het mediatype bestaat ??
+                                    //if(!MediaSource.isTypeSupported(mime)) { ... }
                                     // See https://tools.ietf.org/html/rfc2361 (Appendix A.2)
-                                    $scope.mediaBuffer = $scope.mediaSource.addSourceBuffer('audio/wav; codecs=1');
+                                    $scope.mediaBuffer = $scope.mediaSource.addSourceBuffer($scope.config.mimeType);
                                     $scope.mediaBuffer.mode = 'sequence';
 
                                     $scope.mediaBuffer.addEventListener('update', function() {
@@ -145,9 +158,20 @@ module.exports = function(RED) {
 
                                     // From here on we can start receiving messages...
                                 });
-
+                                /*
+                                // create audio analyser
+                                var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                                $scope.analyser = audioCtx.createAnalyser();   
+                                $scope.analyser.fftSize = 2048;
+                                var bufferLength = $scope.analyser.frequencyBinCount;
+                                var dataArray = new Uint8Array(bufferLength);
+                                
+                                // Bind our analyser to the media element source.
+                                $scope.mediaSource.connect($scope.analyser);   
+                                */
                             }
                             else if (newVal.payload == false) {
+                                // TODO aan server side tonen
                                 if (!$scope.mediaSource || !$scope.mediaQueue || !$scope.mediaBuffer) {
                                     console.log("The audio player was already stopped!");
                                     return;
@@ -161,17 +185,50 @@ module.exports = function(RED) {
                                 delete $scope.mediaQueue;
                                 delete $scope.mediaBuffer;*/
                             }
-                            else if (typeof newVal.payload !== "buffer") {
+                            else if (newVal.payload instanceof ArrayBuffer) {
+                                // TODO aan server side tonen
+                                if (!$scope.mediaSource || !$scope.mediaQueue || !$scope.mediaBuffer) {
+                                    console.log("Cannot play audio chunk when audio player is stopped!");
+                                    return;
+                                }
                                 // See https://github.com/kmoskwiak/node-tcp-streaming-server/blob/master/client/js/app.js
                                 if ($scope.mediaBuffer.updating || $scope.mediaQueue.length > 0) {
-                                    $scope.mediaQueue.push(msg.payload);
+                                    $scope.mediaQueue.push(newVal.payload);
                                 } else {
-                                    $scope.mediaBuffer.appendBuffer(msg.payload);
-                                    video.play();
+                                    $scope.mediaBuffer.appendBuffer(newVal.payload);
+                                    
+                                    var audioElement = document.getElementById("mediaSourcePlayer_" + $scope.config.id);
+                                    audioElement.play();
                                 }
+                                /*
+                                // https://medium.com/@duraraxbaccano/computer-art-visualize-your-music-in-javascript-with-your-browser-part-2-fa1a3b73fdc6
+                                var bufferLength = $scope.analyser.frequencyBinCount;
+                                var dataArray = new Uint8Array(bufferLength);
+                                $scope.analyser.getByteTimeDomainData(dataArray);
+                                
+                                // clear the previous shape
+                                $scope.canvasCtx.fillRect(0, 0, $scope.canvas.width, $scope.canvas.height);
+                                $scope.canvasCtx.beginPath();
+                                var sliceWidth = $scope.canvas.width * 1.0 / bufferLength;
+                                var x = 0;
+                                for(var i = 0; i < bufferLength; i++) {
+                                    var v = dataArray[i] / 128.0;
+                                    var y = v * $scope.canvas.height / 2;
+                                    if(i === 0) {
+                                        $scope.canvasCtx.moveTo(x, y);
+                                    }
+                                    else {
+                                        $scope.canvasCtx.lineTo(x, y);
+                                    }
+                                    x += sliceWidth;
+                                }
+                                $scope.canvasCtx.lineTo($scope.canvas.width, $scope.canvas.height / 2);
+                                $scope.canvasCtx.stroke();
+                                */
                             }
                             else {
-                                console.log("The msg.payload should contain a boolean or a buffer!");
+                                // TODO dit ook al controleren in de server side kant !!!!!!!!!!!!!!!!!!
+                                console.log("The msg.payload should contain a boolean or an ArrayBuffer!");
                             }
                         })
                     }
