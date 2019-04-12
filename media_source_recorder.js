@@ -132,34 +132,43 @@ module.exports = function(RED) {
                                     }
                                 };
                                 
+                                function setStringInDataView(dataView, offset, string) {
+                                    for (var i = 0; i < string.length; i++) {
+                                        view.setUint8(offset + i, string.charCodeAt(i));
+                                    }
+                                }
+                                
                                 // Start capturing by getting access to the microphone (e.g. Chrome will display a popup here ...)
                                 navigator.getUserMedia(userMediaConfig, function(stream) {
-                                    const numChannels = 1; // TODO can this be determined automatically ???   -->  1 for mono or 2 for stereo
                                     const bitRate = 128; // kbps TODO adjustable ???
-                                    const sampleRate = 44100; // 44.1khz (this is a normal mp3 samplerate)
                                     const sampleBlockSize = 1152; //can be anything but make it a multiple of 576 to make encoders life easier
+                                    
+                                    var channelCount = parseInt($scope.config.channelCount);
                     
                                     $scope.mediaStream = stream;
                                     
                                     // Start a WEB AUDIO process chain
                                     $scope.context = new AudioContext();
                                     $scope.mediaSource = $scope.context.createMediaStreamSource($scope.mediaStream);
-                                    $scope.recorderProcessor = $scope.context.createScriptProcessor(parseInt($scope.config.bufferLength), numChannels, numChannels);
+                                    $scope.recorderProcessor = $scope.context.createScriptProcessor(parseInt($scope.config.bufferLength), channelCount, channelCount);
 
                                     $scope.mediaSource.connect($scope.recorderProcessor);
                                     $scope.recorderProcessor.connect($scope.context.destination);
 
                                     if (!$scope.mp3encoder) {
                                         // TODO perhaps do the encoding in a separate worker process (https://github.com/jsalsman/speakclearly/blob/master/index.html)
-                                        $scope.mp3encoder = new lamejs.Mp3Encoder(numChannels, sampleRate, bitRate);
+                                        $scope.mp3encoder = new lamejs.Mp3Encoder(channelCount, $scope.context.sampleRate, bitRate);
                                     }
                                     
                                     debugger;
                                     
                                     // Handle audio chunks from the microphone
                                     $scope.recorderProcessor.onaudioprocess = function(event) {
-                                        // The inputBuffer is a raw audio buffer (PCM)
+                                        // The inputBuffer is a raw audio buffer (PCM).
+                                        // The typedBuffer is a Float32Array, containing the PCM data associated with the channel.
                                         // Caution: above the number of channels has been hardcoded to 1, so let's take that channel.
+                                        // TODO this isn't correct: we should capture all channels (event.inputBuffer.numberOfChannels), since the wav headers contain the channel count
+                                        // TODO convert the entire audiobuffer to an arraybuffer (https://github.com/audiojs/pcm-util/blob/master/index.js#L170)
                                         var typedBuffer = event.inputBuffer.getChannelData(0);
                                         
                                         if ($scope.config.encoding === "mp3") {                
@@ -181,6 +190,35 @@ module.exports = function(RED) {
                                         // Instead we will return the underlying ArrayBuffer, so no copy of the data is required.
                                         // See https://github.com/feross/typedarray-to-buffer/blob/master/index.js
                                         var arrayBuffer = typedBuffer.buffer;
+                                        
+                                        // Optionally add WAV headers (https://github.com/Azure-Samples/SpeechToText-WebSockets-Javascript/blob/master/src/common/RiffPcmEncoder.ts#L41)
+                                        //if ($scope.config.wavHeaders === true) {
+                                        //    const view = new DataView(buffer);
+
+                                        //    setStringInDataView(view, 0, "RIFF");
+                                        //    view.setUint32(4, arrayBuffer.length, true);
+                                        //    setStringInDataView(view, 8, "WAVEfmt ");
+                                        //    /* format chunk length */
+                                        //    view.setUint32(16, 16, true);
+                                        //    /* sample format (raw) */
+                                        //    view.setUint16(20, 1, true);
+                                        //    /* channel count */
+                                        //    view.setUint16(22, event.inputBuffer.numberOfChannels, true);
+                                        //    /* sample rate */
+                                        //    view.setUint32(24, SAMPLE_RATE, true);
+                                        //    /* byte rate (sample rate * block align) */
+                                        //    view.setUint32(28, SAMPLE_RATE * event.inputBuffer.numberOfChannels * bytesPerSample, true);
+                                        //    /* block align (channel count * bytes per sample) */
+                                        //    view.setUint16(32, event.inputBuffer.numberOfChannels * bytesPerSample, true);
+                                        //    /* bits per sample */
+                                        //    view.setUint16(34, bitsPerSample, true);
+                                        //    /* data chunk identifier */
+                                        //    setStringInDataView(view, 36, "data");
+                                        //    /* data chunk length */
+                                        //    view.setUint32(40, arrayBuffer.length, true);
+
+                                        //    this.FloatTo16BitPCM(view, 44, audioFrame);
+                                        //}
 
                                         // Send the audio chunk to the output of the node (in the Node-RED flow)
                                         $scope.send({payload: arrayBuffer});
